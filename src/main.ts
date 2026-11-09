@@ -1,8 +1,8 @@
-import { countPossibleSecrets } from './logic/countPossibleSecrets';
-import { createDigitValidator } from './logic/digits';
-import { evaluateGuess } from './logic/evaluateGuess';
-import { isValidGuess } from './logic/isValidGuess';
-import { generateSecret } from './logic/secrets';
+import { countPossibleSecrets } from './logic/countPossibleSecrets.js';
+import { createDigitValidator } from './logic/digits.js';
+import { evaluateGuess } from './logic/evaluateGuess.js';
+import { isValidGuess } from './logic/isValidGuess.js';
+import { generateSecret } from './logic/secrets.js';
 
 type BaseOption = {
   label: string;
