@@ -20,6 +20,13 @@ type GuessRecord = {
   cows: number;
 };
 
+type ScoreRecord = {
+  base: number;
+  length: number;
+  attempts: number;
+  elapsedMs: number;
+};
+
 type GameState = {
   settings: RoundSettings;
   secret: string;
@@ -34,6 +41,9 @@ const BASE_OPTIONS: BaseOption[] = [
   { label: 'Десятичная (dec)', value: 10 },
   { label: 'Шестнадцатеричная (hex)', value: 16 },
 ];
+
+const SCORE_STORAGE_KEY = 'bulls-and-cows:records';
+const MAX_SCORES_PER_SETTINGS = 5;
 
 let selectedSettings: RoundSettings = { base: 10, length: 4 };
 let game: GameState | undefined;
@@ -68,6 +78,138 @@ const formatDuration = (milliseconds: number): string => {
   const seconds = (totalSeconds % 60).toString().padStart(2, '0');
 
   return `${minutes}:${seconds}`;
+};
+
+const formatCount = (
+  value: number,
+  forms: [singular: string, few: string, many: string],
+): string => {
+  const lastTwoDigits = value % 100;
+  const lastDigit = value % 10;
+  const formIndex =
+    lastTwoDigits >= 11 && lastTwoDigits <= 14
+      ? 2
+      : lastDigit === 1
+        ? 0
+        : lastDigit >= 2 && lastDigit <= 4
+          ? 1
+          : 2;
+
+  return `${value} ${forms[formIndex]}`;
+};
+
+const isScoreRecord = (value: unknown): value is ScoreRecord => {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const record = value as Partial<ScoreRecord>;
+
+  return (
+    Number.isInteger(record.base) &&
+    Number.isInteger(record.length) &&
+    Number.isInteger(record.attempts) &&
+    typeof record.elapsedMs === 'number' &&
+    Number.isFinite(record.elapsedMs) &&
+    (record.base ?? 0) >= 2 &&
+    (record.base ?? 0) <= 16 &&
+    (record.length ?? 0) >= 2 &&
+    (record.length ?? 0) <= 6 &&
+    (record.length ?? 0) <= (record.base ?? 0) &&
+    (record.attempts ?? 0) > 0 &&
+    record.elapsedMs >= 0
+  );
+};
+
+const loadScoreRecords = (): ScoreRecord[] => {
+  try {
+    const storedValue = window.localStorage.getItem(SCORE_STORAGE_KEY);
+
+    if (!storedValue) {
+      return [];
+    }
+
+    const parsedValue: unknown = JSON.parse(storedValue);
+
+    return Array.isArray(parsedValue) ? parsedValue.filter(isScoreRecord) : [];
+  } catch {
+    return [];
+  }
+};
+
+const compareScores = (first: ScoreRecord, second: ScoreRecord): number =>
+  first.attempts - second.attempts || first.elapsedMs - second.elapsedMs;
+
+const saveScoreRecord = (newRecord: ScoreRecord): boolean => {
+  try {
+    const currentRecords = loadScoreRecords();
+    const matchingSettings = currentRecords
+      .filter(
+        (record) =>
+          record.base === newRecord.base && record.length === newRecord.length,
+      )
+      .concat(newRecord)
+      .sort(compareScores)
+      .slice(0, MAX_SCORES_PER_SETTINGS);
+    const otherSettings = currentRecords.filter(
+      (record) =>
+        record.base !== newRecord.base || record.length !== newRecord.length,
+    );
+
+    window.localStorage.setItem(
+      SCORE_STORAGE_KEY,
+      JSON.stringify([...otherSettings, ...matchingSettings]),
+    );
+
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const getBaseLabel = (base: number): string =>
+  BASE_OPTIONS.find((option) => option.value === base)?.label ?? String(base);
+
+const renderLeaderboard = (
+  container: HTMLElement,
+  settings: RoundSettings,
+): void => {
+  const heading = createElement('h2', 'history-heading');
+  heading.textContent = 'Лучшие результаты';
+  const caption = createElement('p', 'leaderboard-caption');
+  caption.textContent = `${settings.length} цифры · ${getBaseLabel(settings.base)} · топ ${MAX_SCORES_PER_SETTINGS}`;
+  const list = createElement('ol', 'leaderboard-list');
+  const scores = loadScoreRecords()
+    .filter(
+      (record) =>
+        record.base === settings.base && record.length === settings.length,
+    )
+    .sort(compareScores)
+    .slice(0, MAX_SCORES_PER_SETTINGS);
+
+  if (scores.length === 0) {
+    const emptyMessage = createElement('li', 'empty-history');
+    emptyMessage.textContent = 'Пока нет результатов для этих настроек';
+    list.append(emptyMessage);
+  } else {
+    scores.forEach((score, index) => {
+      const item = createElement('li', 'leaderboard-entry');
+      const place = createElement('span', 'leaderboard-place');
+      place.textContent = `${index + 1}.`;
+      const attempts = createElement('span', 'leaderboard-attempts');
+      attempts.textContent = formatCount(score.attempts, [
+        'попытка',
+        'попытки',
+        'попыток',
+      ]);
+      const time = createElement('time', 'leaderboard-time');
+      time.textContent = formatDuration(score.elapsedMs);
+      item.append(place, attempts, time);
+      list.append(item);
+    });
+  }
+
+  container.replaceChildren(heading, caption, list);
 };
 
 const stopTimer = (): void => {
@@ -115,12 +257,19 @@ const renderSettings = (): void => {
   lengthSelect.id = 'length-select';
   lengthSelect.name = 'length';
   Array.from({ length: 5 }, (_, index) => index + 2).forEach((length) => {
-    lengthSelect.append(createOption(`${length} цифры`, String(length)));
+    lengthSelect.append(
+      createOption(
+        formatCount(length, ['цифра', 'цифры', 'цифр']),
+        String(length),
+      ),
+    );
   });
   lengthSelect.value = String(selectedSettings.length);
 
   const possibilityCount = createElement('p', 'possibility-count');
   possibilityCount.setAttribute('aria-live', 'polite');
+
+  const leaderboard = createElement('section', 'leaderboard');
 
   const startButton = createElement('button', 'primary-button');
   startButton.type = 'submit';
@@ -155,12 +304,13 @@ const renderSettings = (): void => {
       selectedSettings.base,
     );
     possibilityCount.textContent = `Возможных секретов: ${possibleSecrets.toLocaleString('ru-RU')}`;
+    renderLeaderboard(leaderboard, selectedSettings);
   };
 
   baseLabel.append(baseCaption, baseSelect);
   lengthLabel.append(lengthCaption, lengthSelect);
   form.append(baseLabel, lengthLabel, possibilityCount, startButton);
-  card.append(eyebrow, title, description, form);
+  card.append(eyebrow, title, description, form, leaderboard);
   app.replaceChildren(card);
 
   baseSelect.addEventListener('change', updateSettings);
@@ -209,11 +359,9 @@ const renderGame = (isHexadecimal: boolean): void => {
   header.append(headingGroup, newGameButton);
 
   const roundInfo = createElement('div', 'round-info');
-  const baseName =
-    BASE_OPTIONS.find((option) => option.value === settings.base)?.label ??
-    String(settings.base);
+  const baseName = getBaseLabel(settings.base);
   const settingsBadge = createElement('span', 'settings-badge');
-  settingsBadge.textContent = `${settings.length} цифры · ${baseName}`;
+  settingsBadge.textContent = `${formatCount(settings.length, ['цифра', 'цифры', 'цифр'])} · ${baseName}`;
   const timerLabel = createElement('span', 'timer');
   timerLabel.textContent = 'Время: 00:00';
   roundInfo.append(settingsBadge, timerLabel);
@@ -237,7 +385,7 @@ const renderGame = (isHexadecimal: boolean): void => {
   guessInput.spellcheck = false;
   guessInput.inputMode = 'text';
   guessInput.maxLength = settings.length;
-  guessInput.placeholder = '····';
+  guessInput.placeholder = '·'.repeat(settings.length);
   guessInput.setAttribute('aria-describedby', 'guess-feedback');
 
   const submitButton = createElement('button', 'primary-button');
@@ -334,8 +482,14 @@ const renderGame = (isHexadecimal: boolean): void => {
       guessInput.disabled = true;
       submitButton.disabled = true;
       const elapsedTime = Date.now() - game.startedAt;
+      const scoreWasSaved = saveScoreRecord({
+        base: settings.base,
+        length: settings.length,
+        attempts: game.guesses.length,
+        elapsedMs: elapsedTime,
+      });
       timerLabel.textContent = `Время: ${formatDuration(elapsedTime)}`;
-      resultMessage.textContent = `Ты угадал число ${game.secret} за ${game.guesses.length} попыток и ${formatDuration(elapsedTime)}!`;
+      resultMessage.textContent = `Ты угадал число ${game.secret} за ${game.guesses.length} попыток и ${formatDuration(elapsedTime)}!${scoreWasSaved ? ' Результат сохранён в таблице рекордов.' : ' Не удалось сохранить результат в этом браузере.'}`;
       resultMessage.classList.add('result-success');
       newGameButton.focus();
     } else {

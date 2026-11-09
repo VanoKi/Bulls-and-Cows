@@ -349,3 +349,52 @@ button:disabled {
     text-align: left;
   }
 }
+
+.leaderboard {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid rgb(148 163 184 / 14%);
+}
+
+.leaderboard .history-heading {
+  margin-top: 0;
+}
+
+.leaderboard-caption {
+  margin: -4px 0 14px;
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+.leaderboard-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.leaderboard-entry {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border: 1px solid rgb(148 163 184 / 14%);
+  border-radius: 12px;
+  background: rgb(30 41 59 / 45%);
+}
+
+.leaderboard-place {
+  color: #a5b4fc;
+  font-weight: 700;
+}
+
+.leaderboard-attempts {
+  color: #dbe4f3;
+}
+
+.leaderboard-time {
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
